@@ -1,0 +1,5 @@
+#pragma once
+namespace lifeline {
+inline constexpr char scene_shader[]=
+@LIFELINE_SHADER_LITERALS@;
+}

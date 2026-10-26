@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="74" viewBox="0 0 1280 74" role="img" aria-label="Installation">
+<rect width="1280" height="74" rx="6" fill="#071216"/>
+<path d="M20 21v32M28 21v32M36 21v32" stroke="#46e4d1" stroke-width="2"/>
+<text x="58" y="47" fill="#66ffdf" font-family="Segoe UI,Arial,sans-serif" font-size="25" font-weight="400" letter-spacing="2">INSTALLATION</text>
+<path d="M530 37H1256" stroke="#235158" stroke-width="1"/>
+</svg>

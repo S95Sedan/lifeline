@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="280" viewBox="0 0 1280 280" role="img" aria-labelledby="title desc">
+<title id="title">Lifeline — Native PC Reconstruction</title>
+<desc id="desc">Teal console lines and a voice waveform frame the Lifeline title.</desc>
+<rect width="1280" height="280" rx="12" fill="#071216"/>
+<path d="M24 64V24h180M1076 24h180v40M24 216v40h180M1076 256h180v-40" fill="none" stroke="#46e4d1" stroke-width="2"/>
+<path d="M40 226H1240M40 54H1240" stroke="#235158" stroke-width="1"/>
+<text x="64" y="91" fill="#8ab8bc" font-family="Segoe UI,Arial,sans-serif" font-size="15" letter-spacing="5">NATIVE PC RECONSTRUCTION</text>
+<text x="57" y="188" fill="#66ffdf" font-family="Segoe UI,Arial,sans-serif" font-size="99" font-weight="300" letter-spacing="17">LIFELINE</text>
+<path d="M925 145h30l9-28 13 55 17-93 19 132 17-79 12 25 11-12h114" fill="none" stroke="#66ffdf" stroke-width="3" stroke-linejoin="round"/>
+<text x="64" y="245" fill="#8ab8bc" font-family="Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="3">VOICE · SURVIVAL · EXPLORATION</text>
+</svg>
