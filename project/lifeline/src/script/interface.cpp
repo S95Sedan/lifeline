@@ -20,6 +20,12 @@ std::string text(const Invocation& c,float value){
         for(unsigned i=0;i<4;++i){const char ch=char(bits>>(i*8));if(!ch)return result;result+=ch;}
     }
 }
+std::string storage_message(const Invocation& c,const Interface::Instance& instance,std::string_view field,std::string content){
+    constexpr std::string_view original="\n\n\n No save data present on memory card (8MB)\n(for PlayStation*2) in MEMORY CARD slot 1.";
+    if(has_native_save_menu(c.program.name())&&instance.movie.name=="systemwindow.cf"&&field=="text_sys"&&content==original)
+        return std::string(empty_save_message);
+    return content;
+}
 }
 Interface::Instance* Interface::get(float value){
     if(!std::isfinite(value) || value<0 || value>=slots_.size() || std::floor(value)!=value)throw std::runtime_error("Invalid interface slot");
@@ -175,7 +181,7 @@ Bindings Interface::bindings(){
     }});
     result.emplace(994,Binding{3,0,[this](const Invocation& c){
         auto* instance=get(c.arguments[0]);if(!instance)return Reply{false,0.f};
-        instance->player.text_content(text(c,c.arguments[1]),text(c,c.arguments[2]));return Reply{false,1.f};
+        const auto field=text(c,c.arguments[1]);instance->player.text_content(field,storage_message(c,*instance,field,text(c,c.arguments[2])));return Reply{false,1.f};
     }});
     result.emplace(992,Binding{4,0,[this](const Invocation& c){
         auto* instance=get(c.arguments[0]);if(!instance)return Reply{false,0.f};
@@ -212,7 +218,7 @@ Bindings Interface::bindings(){
                     const char ch=char(bits>>((at%4)*8));if(!ch)break;content+=ch;
                 }
             }
-            instance->player.text_content(name,std::move(content));
+            instance->player.text_content(name,storage_message(c,*instance,name,std::move(content)));
         }else instance->player.text_property(name,selector,value);
         return Reply{false,1.f};
     }});

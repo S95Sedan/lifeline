@@ -13,6 +13,7 @@ public:
     Cinematic(const AssetDirectory&,SDL_Renderer*,const std::string& name,bool capture=false,unsigned frame=0,bool mono=false);
     ~Cinematic();
     bool advance();
+    bool skip_section(); // True when another section remains playing.
     void render();
     unsigned current_frame() const;
     std::uint64_t playback_generation()const;

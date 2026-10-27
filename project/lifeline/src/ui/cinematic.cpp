@@ -13,7 +13,7 @@ struct Cinematic::Impl {
     std::unique_ptr<SDL_Texture,decltype(&SDL_DestroyTexture)> texture{nullptr,SDL_DestroyTexture};
     unsigned current=~0u;
     static inline std::atomic<std::uint64_t> generations{std::uint64_t(1)<<63};
-    const std::uint64_t generation=++generations;
+    std::uint64_t generation=++generations;
     Impl(const AssetDirectory& a,SDL_Renderer* r,const std::string& n,bool c,unsigned f,bool m):renderer(r),playback(a,n,c,f,m){
         const auto& picture=playback.image();
         texture.reset(SDL_CreateTexture(r,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STREAMING,picture.width,picture.height));checked(bool(texture));
@@ -33,7 +33,15 @@ struct Cinematic::Impl {
 };
 Cinematic::Cinematic(const AssetDirectory& a,SDL_Renderer* r,const std::string& n,bool capture,unsigned frame,bool mono):impl_(std::make_unique<Impl>(a,r,n,capture,frame,mono)){}
 Cinematic::~Cinematic()=default;
-bool Cinematic::advance(){return impl_->playback.advance();}
+bool Cinematic::advance(){
+    const auto previous=impl_->playback.current_section();const bool active=impl_->playback.advance();
+    if(previous!=impl_->playback.current_section())impl_->generation=++Impl::generations;
+    return active;
+}
+bool Cinematic::skip_section(){
+    if(!impl_->playback.skip_section())return false;
+    impl_->generation=++Impl::generations;return true;
+}
 void Cinematic::render(){impl_->render();}
 unsigned Cinematic::current_frame()const{return impl_->playback.current_frame();}
 std::uint64_t Cinematic::playback_generation()const{return impl_->generation;}

@@ -275,8 +275,9 @@ void show_movies(const std::vector<FlashMovie>& movies,const std::string& captur
         if(session && running) {const bool was_settings=session->settings_open();session->render();if(was_settings!=session->settings_open())input.reset();applied_display=app_config();if(session->options_requested()&&option_assets){if(!settings_path.empty()){settings=read_menu_settings(settings_path);persisted_settings=settings;}options_session=std::move(session);options=std::make_unique<OptionsController>(*option_assets,settings,app_config(),SDL_GetDisplayForWindow(window.get()));check(SDL_SetRenderLogicalPresentation(renderer.get(),640,448,SDL_LOGICAL_PRESENTATION_LETTERBOX));input.reset();accumulator=0;previous=SDL_GetTicksNS();std::cout<<"Opened PC Options from title script\n";}else if(session->return_to_title()){session.reset();return_to_title();input.reset();}else{check(SDL_RenderPresent(renderer.get()));SDL_Delay(1);continue;}}
         if(cinematic && running) {
             movie_skip->movie(cinematic->playback_generation(),audio_focused,SDL_GetTicks());
-            if(!cinematic->advance()||movie_skip->take_skip(SDL_GetTicks())) {finish_attract();movie_skip->movie(0,false,SDL_GetTicks());}
-            else {cinematic->render();if(movie_skip->visible()){if(!movie_skip_display)movie_skip_display=std::make_unique<MovieSkipDisplay>(*data,renderer.get());movie_skip_display->render(movie_skip->progress(SDL_GetTicks()));}check(SDL_RenderPresent(renderer.get()));SDL_Delay(1);continue;}
+            const auto generation=cinematic->playback_generation();const bool requested=movie_skip->take_skip(SDL_GetTicks());
+            if(!cinematic->advance()||(requested&&generation==cinematic->playback_generation()&&!cinematic->skip_section())) {finish_attract();movie_skip->movie(0,false,SDL_GetTicks());}
+            else {movie_skip->movie(cinematic->playback_generation(),audio_focused,SDL_GetTicks());cinematic->render();if(movie_skip->visible()){if(!movie_skip_display)movie_skip_display=std::make_unique<MovieSkipDisplay>(*data,renderer.get());movie_skip_display->render(movie_skip->progress(SDL_GetTicks()));}check(SDL_RenderPresent(renderer.get()));SDL_Delay(1);continue;}
         }
         if(bonus && bonus->request()==BonusController::Request::closed) return_to_title();
         if(saves && saves->phase()==EmptySaveController::Phase::closed) return_to_title();
@@ -473,8 +474,11 @@ void show_cinematic(const AssetDirectory& assets,const std::string& name,const s
         skip.movie(movie.playback_generation(),focused&&capture.empty(),SDL_GetTicks());
         SDL_Event event;while(SDL_PollEvent(&event)) {audio_device_event(event);if(event.type==SDL_EVENT_QUIT) running=false;if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST)focused=false;if(event.type==SDL_EVENT_WINDOW_FOCUS_GAINED)focused=true;input.event(event,SDL_GetTicks());observe_prompt_input(event,input.gamepad_id());skip.event(event,input.gamepad_id(),SDL_GetTicks());}
         input.take(SDL_GetTicks());
-        skip.movie(movie.playback_generation(),focused&&capture.empty(),SDL_GetTicks());if(skip.take_skip(SDL_GetTicks()))running=false;
-        if(!running || !movie.advance()) break;movie.render();
+        skip.movie(movie.playback_generation(),focused&&capture.empty(),SDL_GetTicks());
+        const auto generation=movie.playback_generation();const bool requested=skip.take_skip(SDL_GetTicks());
+        if(!running || !movie.advance()) break;
+        if(requested&&generation==movie.playback_generation()&&!movie.skip_section())break;
+        skip.movie(movie.playback_generation(),focused&&capture.empty(),SDL_GetTicks());movie.render();
         if(skip.visible()){if(!skip_display)skip_display=std::make_unique<MovieSkipDisplay>(assets,renderer.get());skip_display->render(skip.progress(SDL_GetTicks()));}
         if(!capture.empty()) {
             std::unique_ptr<SDL_Surface,decltype(&SDL_DestroySurface)> image(SDL_RenderReadPixels(renderer.get(),nullptr),SDL_DestroySurface);check_cinematic_window(bool(image));check_cinematic_window(SDL_SaveBMP(image.get(),capture.c_str()));running=false;

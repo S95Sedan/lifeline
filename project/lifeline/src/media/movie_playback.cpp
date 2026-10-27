@@ -17,6 +17,9 @@ struct MoviePlayback::Impl {
     std::deque<Pending> pictures;
     unsigned timeline=0,total_pictures=0,current=~0u,video_count=0;
     unsigned width=0,height=0,channels=0;
+    static constexpr unsigned opening_story_frame=2445;
+    bool opening_sections=false;
+    unsigned seek_frame=0;
     std::uint64_t started=0;
     std::uint64_t samples=0,queued_samples=0,tail_start=0,duration_ms=0;
     bool capture=false,mono=false,eof=false,silent=false,paused=false;
@@ -30,6 +33,7 @@ struct MoviePlayback::Impl {
             !width || !height || width>640 || height>448 || width%16 || height%16 || rate!=30 ||
             !((hz==48000 && channels==2 && samples && priming==1024) || (!hz && !channels && !samples && !priming)) || !total_pictures || total_pictures>timeline || timeline>100000 || samples>48000ULL*3600 || initial>=timeline)
             throw std::runtime_error("Invalid cinematic metadata");
+        opening_sections=name=="s0"&&width==640&&height==448&&timeline==10447&&total_pictures==10406&&samples==16715776;
         const auto media=assets.resolve(installed::movie(name,".mp4"));
         aperture={0,0,width,height};
         auto aperture_path=media;aperture_path.replace_extension(".aperture");
@@ -72,6 +76,7 @@ struct MoviePlayback::Impl {
         }
         if(sample->kind==MovieSample::Kind::video) {
             const auto index=(sample->time_100ns*30+5000000)/10000000;
+            if(!capture&&index>=0&&index<seek_frame)return; // Decoder keyframe preroll.
             if(index<0 || index>=total_pictures || (!capture && index!=video_count) || sample->rgba.size()!=std::size_t(width)*height*4)throw std::runtime_error("Cinematic picture timeline changed");
             pictures.push_back({unsigned(index),std::move(sample->rgba)});++video_count;
             if(pictures.size()>90)throw std::runtime_error("Cinematic streams exceed bounded read-ahead");
@@ -125,6 +130,20 @@ struct MoviePlayback::Impl {
         else {const auto delay=now-pause_start;started+=delay;if(tail_start)tail_start+=delay;if(sound)checked(SDL_ResumeAudioStreamDevice(sound.get()));}
         paused=value;
     }
+    unsigned section()const{return opening_sections&&current!=~0u&&current>=opening_story_frame?1:0;}
+    bool skip_section(){
+        if(capture||paused||!opening_sections||section())return false;
+        if(sound){checked(SDL_PauseAudioStreamDevice(sound.get()));checked(SDL_ClearAudioStream(sound.get()));}
+        decoder->seek(opening_story_frame);
+        seek_frame=opening_story_frame;video_count=seek_frame;queued_samples=std::uint64_t(seek_frame)*1600;
+        pictures.clear();eof=false;tail_start=0;ticks=std::uint64_t(seek_frame)*2;
+        const auto elapsed=std::uint64_t(seek_frame)*1000/30;
+        pump(elapsed);display(elapsed);
+        if(current!=seek_frame)throw std::runtime_error("Opening section picture missing");
+        started=SDL_GetTicks()-elapsed;
+        if(sound)checked(SDL_ResumeAudioStreamDevice(sound.get()));
+        return true;
+    }
     void stop_audio(){
         if(!sound)return;
         const int queued=SDL_GetAudioStreamQueued(sound.get());checked(queued>=0);
@@ -140,6 +159,8 @@ struct MoviePlayback::Impl {
 MoviePlayback::MoviePlayback(const AssetDirectory& a,const std::string& n,bool c,unsigned f,bool m,bool s,bool audio,float gain):impl_(std::make_unique<Impl>(a,n,c,f,m,s,audio,gain)){}
 MoviePlayback::~MoviePlayback()=default;
 bool MoviePlayback::advance(){return impl_->advance();}
+bool MoviePlayback::skip_section(){return impl_->skip_section();}
+unsigned MoviePlayback::current_section()const{return impl_->section();}
 void MoviePlayback::pause(bool value){impl_->pause(value);}
 void MoviePlayback::stop_audio(){impl_->stop_audio();}
 const AssetImage& MoviePlayback::image()const{return impl_->image;}

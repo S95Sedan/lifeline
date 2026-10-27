@@ -34,8 +34,10 @@ struct MovieDecoder::Impl {
     DWORD video=~0u,audio=~0u;bool video_only=false,video_end=false,audio_end=false;
     LONG stride=640*4;
     unsigned width=0,height=0;
-    unsigned skip_audio=0;std::uint64_t audio_position=0;
-    Impl(const std::filesystem::path& path,MovieDecodeMode mode,unsigned delay):video_only(mode==MovieDecodeMode::video_only),video_end(mode==MovieDecodeMode::audio_only),audio_end(video_only),skip_audio(delay) {
+    unsigned skip_audio=0,audio_priming=0,seek_priming=0;
+    std::int64_t audio_position=0,seek_audio_target=0;
+    bool seek_audio_position=false,trim_audio=false,audio_only=false;
+    Impl(const std::filesystem::path& path,MovieDecodeMode mode,unsigned delay):video_only(mode==MovieDecodeMode::video_only),video_end(mode==MovieDecodeMode::audio_only),audio_end(video_only),skip_audio(delay),audio_priming(delay),audio_only(mode==MovieDecodeMode::audio_only) {
         ComPtr<IMFAttributes> attributes;checked(MFCreateAttributes(&attributes,2));
         checked(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,TRUE));
         checked(MFCreateSourceReaderFromURL(path.c_str(),attributes.Get(),&reader));
@@ -73,9 +75,12 @@ struct MovieDecoder::Impl {
         }
     }
     void seek(unsigned frame) {
-        if(!video_only)throw std::runtime_error("Movie seek is reserved for video captures");
-        PROPVARIANT position{};position.vt=VT_I8;position.hVal.QuadPart=std::int64_t(frame)*10000000/30;
-        checked(reader->SetCurrentPosition(GUID_NULL,position));video_end=false;audio_end=video_only || audio==~0u;
+        // Decode one second of AAC/keyframe preroll, then trim against the
+        // original PCM timeline. Capture-only seeking retains its old path.
+        const auto preroll=video_only?frame:frame>30?frame-30:0;
+        PROPVARIANT position{};position.vt=VT_I8;position.hVal.QuadPart=std::int64_t(preroll)*10000000/30;
+        checked(reader->SetCurrentPosition(GUID_NULL,position));video_end=audio_only;audio_end=video_only || audio==~0u;
+        if(!video_only){skip_audio=0;seek_audio_target=std::int64_t(frame)*1600;seek_audio_position=true;trim_audio=true;seek_priming=preroll?audio_priming:0;}
     }
     std::optional<MovieSample> read() {
         while(!video_end || !audio_end) {
@@ -108,10 +113,19 @@ struct MovieDecoder::Impl {
                 // The Windows AAC source reader exposes encoder priming instead
                 // of applying the MP4 edit-list trim. The installation recipe
                 // records that lead-in. Return the original zero-based timeline.
-                const auto skip=std::min(skip_audio,unsigned(lock.size/4));skip_audio-=skip;
+                if(seek_audio_position){
+                    // Seeking restarts the Windows AAC decoder's lead-in as
+                    // well as retaining the file's encoder priming. Account
+                    // for both before discarding the decoded preroll.
+                    audio_position=(timestamp*48000+5000000)/10000000-audio_priming-seek_priming;
+                    seek_audio_position=false;
+                }
+                const auto count=unsigned(lock.size/4);
+                const auto skip=trim_audio?unsigned(std::min<std::int64_t>(std::max<std::int64_t>(0,seek_audio_target-audio_position),count)):std::min(skip_audio,count);
+                if(trim_audio)audio_position+=skip;else skip_audio-=skip;
                 const auto size=lock.size-skip*4;if(!size)continue;
                 result.pcm.resize(size/2);std::memcpy(result.pcm.data(),lock.bytes+skip*4,size);
-                result.time_100ns=std::int64_t(audio_position*10000000/48000);audio_position+=size/4;
+                result.time_100ns=audio_position*10000000/48000;audio_position+=size/4;
             }
             return result;
         }

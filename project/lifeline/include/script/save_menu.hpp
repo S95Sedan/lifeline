@@ -9,6 +9,7 @@ inline constexpr unsigned save_visible_rows=4;
 // Native UI service, used only by the adapted PC storage menus.
 inline constexpr unsigned save_menu_update_opcode=1200;
 inline constexpr unsigned load_cue_play_opcode=1201,load_cue_wait_opcode=1202;
+inline constexpr std::string_view empty_save_message="\n\n\n No saved games were found.\n Save your progress in-game before loading.";
 inline bool has_native_save_menu(std::string_view name){
     return name=="entry_100.cb"||name=="entry_101.cb"||name=="entry_1004.cb";
 }

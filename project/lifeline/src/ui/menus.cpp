@@ -1,4 +1,5 @@
 #include "ui/menus.hpp"
+#include "script/save_menu.hpp"
 #include <fstream>
 
 namespace lifeline {
@@ -46,7 +47,7 @@ EmptySaveController::EmptySaveController(const SaveMenuAssets& assets,bool bonus
 void EmptySaveController::notice() {
     phase_=Phase::notice;yes_=false;
     // Platform wording: this port uses native saves, not PS2 memory cards.
-    window_.set_text("text_sys","\n\n\n No native save data is available.",24,24);
+    window_.set_text("text_sys",std::string(script::empty_save_message),24,24);
 }
 void EmptySaveController::advance() {
     if(phase_==Phase::closed) return;

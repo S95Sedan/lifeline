@@ -13,6 +13,10 @@ public:
     MoviePlayback(const AssetDirectory&,const std::string&,bool capture=false,unsigned frame=0,bool mono=false,bool silent=false,bool audio=true,float gain=1.f);
     ~MoviePlayback();
     bool advance();
+    // The installed opening combines credits and the story introduction.
+    // Advance only to its next section; false means the current movie is last.
+    bool skip_section();
+    unsigned current_section()const;
     void pause(bool);
     void stop_audio();
     const AssetImage& image()const;

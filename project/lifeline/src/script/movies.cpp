@@ -10,6 +10,9 @@ namespace lifeline::script {
 void Movies::pause(bool paused){paused_=paused;if(paused_)pending_skip_generation_=0;for(auto& stream:streams_)if(stream.playback)stream.playback->pause(paused_||stream.paused);}
 namespace {
 std::atomic<std::uint64_t> next_fullscreen_generation{0};
+std::uint64_t fullscreen_identity(){
+    std::uint64_t value;do{value=next_fullscreen_generation.fetch_add(1,std::memory_order_relaxed)+1;}while(!value);return value;
+}
 int integer(float value){if(!std::isfinite(value) || double(value)<INT32_MIN || double(value)>INT32_MAX)throw std::runtime_error("Invalid movie argument");return int(std::nearbyint(value));}
 std::string movie_name(const Invocation& c,unsigned argument){
     const int address=integer(c.arguments[argument]);if(address<0)throw std::runtime_error("Invalid movie name address");
@@ -45,10 +48,10 @@ void Movies::close_audio_channel(int channel){
 }
 void Movies::start(unsigned index,const std::string& name,bool loop){
     auto& s=streams_.at(index);if(s.state || (index && s.owned))return;
-    s.name=name;s.loop=loop;s.state=1;s.paused=false;s.owned=true;s.decoded=0;s.loop_frames=0;
+    s.name=name;s.loop=loop;s.state=1;s.paused=false;s.owned=true;s.decoded=0;s.loop_frames=0;s.section=0;
     if(index==0){
         scaled_frame_=0;pending_skip_generation_=0;player_skipped_=false;
-        do{fullscreen_generation_=next_fullscreen_generation.fetch_add(1,std::memory_order_relaxed)+1;}while(!fullscreen_generation_);
+        fullscreen_generation_=fullscreen_identity();
     }
 }
 void Movies::stop(unsigned index){
@@ -123,7 +126,17 @@ void Movies::advance(){
             if(s.loop){s.loop_frames+=s.frames;s.playback=std::make_unique<MoviePlayback>(assets_,s.name,false,0,false,silent_,false);s.playback->pause(paused_||s.paused);}
             else {complete(index);continue;}
         }
-        if(index==0&&pending&&pending==fullscreen_generation_&&fullscreen_skippable()){complete(index,true);continue;}
+        if(index==0&&s.playback){
+            // Natural section changes invalidate an unfinished hold too. Check
+            // this before the request, so it cannot target the next section.
+            const auto section=s.playback->current_section();
+            if(section!=s.section){s.section=section;fullscreen_generation_=fullscreen_identity();}
+            if(pending&&pending==fullscreen_generation_&&fullscreen_skippable()){
+                if(s.playback->skip_section()){
+                    s.section=s.playback->current_section();fullscreen_generation_=fullscreen_identity();
+                }else {complete(index,true);continue;}
+            }
+        }
         if(s.playback){
             const unsigned decoded=s.loop_frames+s.playback->current_frame()+1;
             if(decoded!=s.decoded){

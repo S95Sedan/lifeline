@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <optional>
 namespace lifeline {
-// One continuous Confirm hold belongs to one visible movie. The host supplies
-// a stable playback generation and monotonic milliseconds (not simulation time).
+// One continuous Confirm hold belongs to one visible movie section. The host
+// supplies its generation and monotonic milliseconds (not simulation time).
 class MovieSkipHold {
     BindingState bindings_;
     std::uint64_t movie_=0;

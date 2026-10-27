@@ -12,7 +12,7 @@ class Movies {
     std::uint64_t fullscreen_generation_=0,pending_skip_generation_=0;
     bool player_skipped_=false;
     struct Stream {
-        unsigned state=0,frames=0,decoded=0,loop_frames=0;
+        unsigned state=0,frames=0,decoded=0,loop_frames=0,section=0;
         bool paused=false,loop=false,owned=false,skipping=false;
         int audio=-1;
         std::string name;
@@ -37,7 +37,7 @@ public:
     Bindings bindings();
     void skip_next_cinematic(){skip_next_=true;} // Explicit debug entry only.
     bool debug_skip_completed()const{return debug_completed_;}
-    // Identifies one accepted primary request, including its loading state.
+    // Identifies one primary section, including its loading state.
     // Zero means no primary movie; replacement sessions get distinct identities.
     std::uint64_t fullscreen_generation()const{return fullscreen_generation_;}
     // Drawing can be disabled during a longer in-engine pre-roll. Readiness
