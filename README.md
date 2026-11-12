@@ -138,6 +138,10 @@ Close the game before making manual configuration edits.
 <a id="credits"></a>
 <img src="docs/images/credits.svg" alt="Credits and notices" width="100%">
 
+The native PC reconstruction has been personally 
+tested through 100% game completion, including story progression, combat, 
+voice-controlled interactions, and optional content.
+
 This is an unofficial project and is not affiliated with or endorsed by the
 original game's developers or publishers. Lifeline / Operator's Side, its
 characters, artwork, and trademarks belong to their respective owners.
