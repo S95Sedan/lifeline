@@ -1,0 +1,27 @@
+cmake_minimum_required(VERSION 3.20)
+if(NOT DEFINED LIFELINE_PLATFORM)
+    message(FATAL_ERROR "Configure project/lifeline-windows or project/lifeline-linux")
+endif()
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+set(LIFELINE_ISO "${CMAKE_CURRENT_SOURCE_DIR}/../../sources/iso/Lifeline.iso" CACHE FILEPATH "Original game ISO")
+set(LIFELINE_INSTALLER "${CMAKE_CURRENT_SOURCE_DIR}/../../dev/installer-reference")
+set(LIFELINE_GENERATED "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+include(cmake/Dependencies.cmake)
+option(LIFELINE_BUILD_TOOLS "Build development recovery and test targets" OFF)
+set(LIFELINE_DEV "${CMAKE_CURRENT_SOURCE_DIR}/../../dev")
+if(LIFELINE_BUILD_TOOLS)
+    include("${LIFELINE_DEV}/recovery/Recompilation.cmake")
+endif()
+include(cmake/Targets.cmake)
+
+if(EXISTS "${LIFELINE_INSTALLER}/CMakeLists.txt")
+    add_subdirectory("${LIFELINE_INSTALLER}" "${CMAKE_CURRENT_BINARY_DIR}/installer-reference" EXCLUDE_FROM_ALL)
+endif()
+
+if(LIFELINE_BUILD_TOOLS)
+    include("${LIFELINE_DEV}/Tests.cmake")
+endif()

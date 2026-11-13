@@ -4,8 +4,8 @@
 using namespace lifeline::setup;
 int wmain(int argc, wchar_t **argv) {
     try {
-        require(argc == 6,
-                "Usage: lifeline-package reference-data-or-recipe.json game.exe ffmpeg-license notices output.pak");
+        require(argc == 7,
+                "Usage: lifeline-package reference-data-or-recipe.json game.exe ffmpeg-license notices output.pak linux-runtime-folder");
         fs::path reference(argv[1]), game(argv[2]), license(argv[3]), notices(argv[4]), output(argv[5]);
         const bool prepared = fs::is_regular_file(reference);
         auto manifest = read_json(prepared ? reference : reference / L"manifest.json");
@@ -54,9 +54,34 @@ int wmain(int argc, wchar_t **argv) {
         }
         std::map<std::string, Bytes> files;
         files["recipe.json"] = bytes(recipe.dump());
-        files["program/lifeline.exe"] = read_file(game);
-        files["program/licenses/LICENSE-ffmpeg.txt"] = read_file(license);
-        files["program/licenses/third-party-notices.txt"] = read_file(notices);
+        auto windows_game=read_file(game);
+        require(windows_game.size()>64&&u16(windows_game,0)==0x5a4d,"The Windows runtime must be a Windows PE executable");
+        const auto pe=std::size_t(u32(windows_game,60));
+        require(pe<=windows_game.size()&&windows_game.size()-pe>=24&&u32(windows_game,pe)==0x4550&&u16(windows_game,pe+4)==0x8664,
+                "The Windows runtime must be a native Windows x86-64 executable");
+        files["program/windows/lifeline.exe"] = std::move(windows_game);
+        files["program/shared/licenses/LICENSE-ffmpeg.txt"] = read_file(license);
+        files["program/shared/licenses/third-party-notices.txt"] = read_file(notices);
+        const fs::path linux_root(argv[6]);
+        const auto runtime=read_json(linux_root/L"runtime-manifest.json");
+        const auto linux_game=read_file(linux_root/L"lifeline");
+        require(linux_game.size()>20&&fixed_string(linux_game,0,4)=="\x7f" "ELF"&&linux_game[4]==2&&linux_game[5]==1&&u16(linux_game,18)==62,
+                "The Steam Deck runtime must contain a native Linux x86-64 ELF executable");
+        require(sha256(linux_game)==runtime.at("binary_sha256").get<std::string>(),"The Linux executable does not match its runtime manifest");
+        files["program/linux/lifeline"]=linux_game;
+        for(const auto* name:{"launch.sh","README.txt","runtime-manifest.json"})
+            files[std::string("program/linux/")+name]=read_file(safe_path(linux_root,name));
+        for(const auto& library:runtime.at("bundled_libraries")){
+            const auto name=std::string("lib/")+library.at("name").get<std::string>();
+            auto content=read_file(safe_path(linux_root,name));
+            require(sha256(content)==library.at("sha256").get<std::string>(),"Linux runtime library failed verification: "+name);
+            files["program/linux/"+name]=std::move(content);
+        }
+        check_tree(linux_root/L"licenses");
+        for(const auto& entry:fs::recursive_directory_iterator(linux_root/L"licenses"))if(entry.is_regular_file()){
+            const auto name=entry.path().lexically_relative(linux_root).generic_string();
+            files["program/linux/"+name]=read_file(safe_path(linux_root,name));
+        }
         Json report = {{"format", 1}, {"files", Json::array()}};
         for (const auto &[name, data] : files)
             report["files"].push_back(Json{{"path", name}, {"bytes", data.size()}, {"sha256", sha256(data)}});

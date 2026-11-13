@@ -1,0 +1,7 @@
+find_path(LIFELINE_FFMPEG_INCLUDE libavformat/avformat.h PATH_SUFFIXES x86_64-linux-gnu REQUIRED)
+target_sources(lifeline-movie-decoder PRIVATE "${LIFELINE_PLATFORM_DIR}/src/platform/movie_decoder.cpp")
+target_include_directories(lifeline-movie-decoder PRIVATE "${LIFELINE_FFMPEG_INCLUDE}")
+foreach(_lib avformat avcodec avutil swscale swresample)
+    find_library(LIFELINE_${_lib}_LIBRARY NAMES ${_lib} REQUIRED)
+    target_link_libraries(lifeline-movie-decoder PRIVATE "${LIFELINE_${_lib}_LIBRARY}")
+endforeach()

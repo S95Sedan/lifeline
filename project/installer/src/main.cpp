@@ -12,7 +12,8 @@
 using namespace lifeline::setup;
 namespace {
 constexpr UINT status_message = WM_APP + 1, finished_message = WM_APP + 2;
-constexpr int next_id = 1001, back_id = 1002, cancel_id = 1003, iso_browse_id = 1004, folder_browse_id = 1005;
+constexpr int next_id = 1001, back_id = 1002, cancel_id = 1003, iso_browse_id = 1004, folder_browse_id = 1005,
+              windows_id = 1006, steamdeck_id = 1007;
 using namespace lifeline::setup::ui;
 std::wstring text(HWND control) {
     auto length = GetWindowTextLengthW(control);
@@ -66,6 +67,8 @@ fs::path browse_folder(HWND window, const fs::path &initial) {
     return path;
 }
 class Wizard {
+    static constexpr int version_page = 0, disc_page = 1, location_page = 2, review_page = 3,
+                         install_page = 4, page_count = 5;
     // Layout is authored at 96 DPI on an 880 x 660 client area and scaled by px().
     // The frame follows the reference installer: header and accent rule, a step
     // rail on the left, a footer with the navigation buttons and padded pages.
@@ -85,7 +88,8 @@ class Wizard {
     static constexpr const wchar_t *role_property = L"Lifeline.Role";
     static constexpr UINT_PTR clock_timer = 1;
     HWND window = nullptr, next = nullptr, back = nullptr, cancel_button = nullptr, iso_edit = nullptr,
-         destination_edit = nullptr, desktop = nullptr, start_menu = nullptr, launch = nullptr, status = nullptr;
+         destination_edit = nullptr, windows_choice = nullptr, steamdeck_choice = nullptr,
+         desktop = nullptr, start_menu = nullptr, launch = nullptr, status = nullptr;
     HINSTANCE instance = nullptr;
     HBRUSH window_brush = CreateSolidBrush(colour::window), card_brush = CreateSolidBrush(colour::card),
            field_brush = CreateSolidBrush(colour::field);
@@ -94,7 +98,7 @@ class Wizard {
     HBITMAP header_art = nullptr;
     std::vector<HWND> controls;
     InstallOptions options;
-    int page = 0, dpi = 96, error_height = 20;
+    int page = version_page, dpi = 96, error_height = 20;
     std::thread worker;
     std::atomic_bool cancel{false};
     Json result;
@@ -155,7 +159,7 @@ class Wizard {
             DestroyWindow(handle);
         }
         controls.clear();
-        iso_edit = destination_edit = desktop = start_menu = launch = status = nullptr;
+        iso_edit = destination_edit = windows_choice = steamdeck_choice = desktop = start_menu = launch = status = nullptr;
     }
     bool cancelled() const { return finished && !success && cancel.load(); }
     // Colour of the final outcome: green for success, amber when cancelled, red on failure.
@@ -168,14 +172,14 @@ class Wizard {
         // Footer buttons: Back and the primary action are grouped, Cancel stands apart.
         const int top = footer_top + (footer_height - button_height) / 2, right = client_width - 28;
         const int next_left = right - button_width * 2 - 24;
-        next = button(finished ? (success ? L"Finish" : L"Close") : page == 2 ? L"Install" : L"Next", next_left, top,
+        next = button(finished ? (success ? L"Finish" : L"Close") : page == review_page ? (options.target==InstallTarget::steamdeck?L"Create folder":L"Install") : L"Next", next_left, top,
                       button_width, button_height, next_id, colour::footer);
         back = button(L"Back", next_left - 10 - button_width, top, button_width, button_height, back_id,
                       colour::footer);
         cancel_button = button(L"Cancel", right - button_width, top, button_width, button_height, cancel_id,
                                colour::footer);
-        EnableWindow(back, page > 0 && page < 3);
-        EnableWindow(next, page < 3 || finished);
+        EnableWindow(back, page > version_page && page < install_page);
+        EnableWindow(next, page < install_page || finished);
         EnableWindow(cancel_button, !finished);
         // Page headings are real labels so assistive tools can read them.
         auto title = [&](const std::wstring &heading_text, const std::wstring &subtitle, int indent = 0) {
@@ -184,27 +188,44 @@ class Wizard {
                 label(subtitle, content_left + indent, content_top + 40, content_width - indent, 20, subheading,
                       role_dim);
         };
-        if (page == 0) {
-            title(L"Game disc", L"Select the ISO image of your original Lifeline disc.");
+        if (page == version_page) {
+            title(L"Choose a version", L"Install on Windows or prepare a portable Steam Deck game.");
+            windows_choice = control(L"BUTTON", L"Windows installation",
+                BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, content_left, content_top + 92,
+                content_width, 78, windows_id, strong);
+            ui::decorate_checkbox(windows_choice, L"Install Lifeline for this Windows PC.", colour::window, dpi);
+            steamdeck_choice = control(L"BUTTON", L"Steam Deck portable folder",
+                BS_AUTORADIOBUTTON | WS_TABSTOP, content_left, content_top + 182,
+                content_width, 92, steamdeck_id, strong);
+            ui::decorate_checkbox(steamdeck_choice,
+                L"Create the complete native Linux game. Copy the folder to your Deck and add launch.sh to Steam.",
+                colour::window, dpi);
+            SendMessageW(windows_choice, BM_SETCHECK, options.target == InstallTarget::windows ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendMessageW(steamdeck_choice, BM_SETCHECK, options.target == InstallTarget::steamdeck ? BST_CHECKED : BST_UNCHECKED, 0);
+        } else if (page == disc_page) {
+            title(L"Game disc", L"Choose your original Lifeline disc image.");
             iso_edit = field(options.iso.wstring(), iso_browse_id);
-        } else if (page == 1) {
-            title(L"Install location", L"Choose where Lifeline will be installed.");
+        } else if (page == location_page) {
+            title(options.target==InstallTarget::steamdeck?L"Portable folder location":L"Install location",options.target==InstallTarget::steamdeck?L"Choose where the ready-to-copy folder will be created.":L"Choose where Lifeline will be installed.");
             destination_edit = field(options.destination.wstring(), folder_browse_id);
             refresh_space();
             const int width = (content_width - 12) / 2, y = panel_top + panel_height + 52;
+            if(options.target==InstallTarget::windows){
             start_menu = checkbox(L"Start menu shortcut", L"Add Lifeline to the Start menu.", content_left, y,
                                   width, 64, options.start_menu);
             desktop = checkbox(L"Desktop shortcut", L"Add Lifeline to the desktop.", content_left + width + 12, y,
                                width, 64, options.desktop);
-        } else if (page == 2) {
-            title(L"Ready to install", L"Check the summary below, then start the installation.");
+            } else label(L"Copy the complete output folder to your Steam Deck after setup.\nWindows shortcuts are not created.",content_left,y,content_width,64,body,role_dim);
+        } else if (page == review_page) {
+            title(options.target==InstallTarget::steamdeck?L"Ready to create portable folder":L"Ready to install",L"Check the summary below, then continue.");
         } else if (!finished) {
-            title(L"Installing Lifeline", L"");
+            title(options.target==InstallTarget::steamdeck?L"Preparing Steam Deck folder":L"Installing Lifeline", L"");
             status = label(L"Checking your disc...", content_left, content_top + 58, content_width - 90, 22, body, 0);
         } else if (success) {
-            title(L"Installation complete", L"Lifeline was installed and verified.", 56);
-            launch = checkbox(L"Launch Lifeline", L"Start the game when setup closes.", content_left,
+            title(options.target==InstallTarget::steamdeck?L"Portable folder ready":L"Installation complete",options.target==InstallTarget::steamdeck?L"Copy the complete folder to your Steam Deck.":L"Lifeline was installed and verified.",56);
+            if(options.target==InstallTarget::windows)launch = checkbox(L"Launch Lifeline", L"Start the game when setup closes.", content_left,
                               content_bottom - 64, content_width, 64, true);
+            else label(L"On the Deck, open a terminal in that folder and run:\nsh ./launch.sh",content_left,content_bottom-64,content_width,64,body,role_dim);
         } else {
             title(cancelled() ? L"Installation cancelled" : L"Installation failed",
                   cancelled() ? L"You can run setup again at any time." : L"Lifeline was not installed.", 56);
@@ -215,11 +236,12 @@ class Wizard {
             error_height = std::clamp(measured, 20, content_bottom - panel_top - 28);
             label(error, content_left + 16, panel_top + 14, content_width - 32, error_height, body, role_card);
         }
-        SetFocus(page == 3 && !finished ? cancel_button : next);
+        SetFocus(page == version_page ? (options.target == InstallTarget::steamdeck ? steamdeck_choice : windows_choice)
+                 : page == install_page && !finished ? cancel_button : next);
         InvalidateRect(window, nullptr, FALSE);
     }
     void update_time() {
-        if (page == 3 && !finished) {
+        if (page == install_page && !finished) {
             auto area = box(content_left, content_bottom - 22, content_width, 22);
             InvalidateRect(window, &area, FALSE);
         }
@@ -286,7 +308,7 @@ class Wizard {
     void advance() {
         try {
             if (finished) {
-                if (success && launch && SendMessageW(launch, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+                if (success && options.target==InstallTarget::windows && launch && SendMessageW(launch, BM_GETCHECK, 0, 0) == BST_CHECKED) {
                     auto result_ =
                         ShellExecuteW(window, L"open", (options.destination / L"lifeline.exe").c_str(),
                                       nullptr, options.destination.c_str(), SW_SHOWNORMAL);
@@ -296,12 +318,12 @@ class Wizard {
                 return;
             }
             retain();
-            if (page == 0) {
+            if (page == disc_page) {
                 Disc validation(options.iso);
-            } else if (page == 1)
+            } else if (page == location_page)
                 options.destination = validate_destination(options.destination, options.iso);
-            else if (page == 2) {
-                page = 3;
+            else if (page == review_page) {
+                page = install_page;
                 started = std::chrono::steady_clock::now();
                 SetTimer(window, clock_timer, 1000, nullptr);
                 show();
@@ -376,6 +398,7 @@ class Wizard {
              DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_PATH_ELLIPSIS);
     }
     std::wstring shortcuts() const {
+        if(options.target==InstallTarget::steamdeck)return L"None (portable folder)";
         if (options.start_menu && options.desktop)
             return L"Start menu and desktop";
         return options.start_menu ? L"Start menu" : options.desktop ? L"Desktop" : L"None";
@@ -428,16 +451,16 @@ class Wizard {
     void paint_rail(HDC dc) const {
         ui::fill(dc, box(0, body_top, rail_width, footer_top - body_top), colour::rail);
         ui::fill(dc, box(rail_width - 1, body_top, 1, footer_top - body_top), colour::divider);
-        const wchar_t *steps[] = {L"Game disc", L"Install location", L"Ready to install", L"Installing"};
-        const wchar_t *hints[] = {L"Select your disc image", L"Folder and shortcuts", L"Review your choices",
+        const wchar_t *steps[] = {L"Version", L"Game disc", L"Install location", L"Ready to install", L"Installing"};
+        const wchar_t *hints[] = {L"Windows or Steam Deck", L"Original disc image", L"Destination options", L"Review your choices",
                                   L"Copy and verify"};
         const int x = 26, marker = 26, row = 52;
         auto stopped = finished && !success;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < page_count; ++i) {
             int y = body_top + 26 + i * row;
-            bool done = i < page || (i == 3 && success), active = i == page && !done;
+            bool done = i < page || (i == install_page && success), active = i == page && !done;
             auto area = box(x, y, marker, marker);
-            if (i < 3)
+            if (i < install_page)
                 ui::fill(dc, box(x + marker / 2, y + marker + 3, 1, row - marker - 6),
                          done ? colour::accent_shade : colour::divider);
             if (done)
@@ -463,7 +486,7 @@ class Wizard {
     void paint_footer(HDC dc) const {
         ui::fill(dc, box(0, footer_top, client_width, footer_height), colour::footer);
         ui::fill(dc, box(0, footer_top, client_width, 1), colour::divider);
-        auto state = !finished     ? L"Step " + std::to_wstring(page + 1) + L" of 4"
+        auto state = !finished     ? L"Step " + std::to_wstring(page + 1) + L" of " + std::to_wstring(page_count)
                      : success     ? std::wstring(L"All steps complete")
                                    : std::wstring(L"Installation stopped");
         draw(dc, state, 28, footer_top, 300, footer_height, small_font, colour::text_faint);
@@ -478,7 +501,9 @@ class Wizard {
     void paint_content(HDC dc) const {
         ui::fill(dc, box(rail_width, body_top, client_width - rail_width, footer_top - body_top), colour::window);
         const int rows = field_top + field_height + 20;
-        if (page == 0) {
+        if (page == version_page) {
+            // The version cards are child controls; there is no path panel here.
+        } else if (page == disc_page) {
             paint_path_panel(dc, iso_edit, L"Disc image");
             auto found = false;
             if (iso_edit) {
@@ -488,7 +513,7 @@ class Wizard {
             info(dc, rows, L"Disc image", found ? L"Found" : L"No file selected",
                  found ? colour::success : colour::signal, found ? colour::text : colour::text_dim);
             info(dc, rows + 28, L"Required", L"North American release (SLUS-208.48)", colour::text_dim);
-        } else if (page == 1) {
+        } else if (page == location_page) {
             paint_path_panel(dc, destination_edit, L"Destination folder");
             info(dc, rows, L"Space required", L"6 GB free during setup, about 5 GB installed", colour::text_dim);
             if (space_known)
@@ -497,13 +522,14 @@ class Wizard {
             else
                 info(dc, rows + 28, L"Space available", L"Checked when you continue", colour::text_faint,
                      colour::text_dim);
-            draw(dc, L"Shortcuts", content_left, panel_top + panel_height + 20, content_width, 20, strong, colour::text);
-        } else if (page == 2) {
-            const int top = panel_top, height = 24 + 4 * row_height;
+            draw(dc,options.target==InstallTarget::steamdeck?L"Portable output":L"Shortcuts",content_left,panel_top+panel_height+20,content_width,20,strong,colour::text);
+        } else if (page == review_page) {
+            const int top = panel_top, height = 24 + 5 * row_height;
             panel(dc, top, height, colour::card, colour::border);
             int y = top + 14;
             summary(dc, y, L"Disc image", options.iso.wstring());
-            summary(dc, y += row_height, L"Install folder", options.destination.wstring());
+            summary(dc, y += row_height, L"Destination", options.destination.wstring());
+            summary(dc,y+=row_height,L"Platform",options.target==InstallTarget::steamdeck?L"Linux / Steam Deck (portable)":L"Windows");
             summary(dc, y += row_height, L"Shortcuts", shortcuts());
             summary(dc, y += row_height, L"Disk space", L"6 GB free during setup, about 5 GB installed");
             paragraph(dc,
@@ -521,7 +547,7 @@ class Wizard {
                 const int height = 24 + 3 * row_height;
                 panel(dc, top, height, colour::window, colour::mix(colour::border, colour::success, 90));
                 int y = top + 14;
-                summary(dc, y, L"Installed to", options.destination.wstring());
+                summary(dc,y,options.target==InstallTarget::steamdeck?L"Portable folder":L"Installed to",options.destination.wstring());
                 summary(dc, y += row_height, L"Time taken", duration());
                 summary(dc, y += row_height, L"Shortcuts", shortcuts());
                 if (!warning.empty()) {
@@ -587,6 +613,14 @@ class Wizard {
         switch (message) {
         case WM_COMMAND: {
             auto source = reinterpret_cast<HWND>(lparam);
+            if(source && (source==windows_choice || source==steamdeck_choice) && HIWORD(wparam)==BN_CLICKED){
+                const auto previous_default=default_destination(options.target);
+                options.target=source==steamdeck_choice?InstallTarget::steamdeck:InstallTarget::windows;
+                if(options.destination==previous_default)options.destination=default_destination(options.target);
+                SendMessageW(windows_choice,BM_SETCHECK,options.target==InstallTarget::windows?BST_CHECKED:BST_UNCHECKED,0);
+                SendMessageW(steamdeck_choice,BM_SETCHECK,options.target==InstallTarget::steamdeck?BST_CHECKED:BST_UNCHECKED,0);
+                return 0;
+            }
             if (source && (source == iso_edit || source == destination_edit)) {
                 auto code = HIWORD(wparam);
                 if (code == EN_CHANGE && source == destination_edit)
@@ -665,6 +699,7 @@ class Wizard {
         case WM_CTLCOLORBTN:
             SetBkColor(reinterpret_cast<HDC>(wparam), colour::window);
             return reinterpret_cast<LRESULT>(window_brush);
+        case WM_CTLCOLORLISTBOX:
         case WM_CTLCOLOREDIT:
             SetTextColor(reinterpret_cast<HDC>(wparam), colour::text);
             SetBkColor(reinterpret_cast<HDC>(wparam), colour::field);
@@ -722,7 +757,7 @@ class Wizard {
         if (options.iso.empty())
             options.iso = find_iso();
         if (options.destination.empty())
-            options.destination = default_destination();
+            options.destination = default_destination(options.target);
         SetProcessDPIAware();
         dpi = int(GetDpiForSystem());
         body = ui::make_font(13, FW_NORMAL, dpi);
@@ -810,6 +845,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                 options.iso = value();
             else if (argument == L"--destination")
                 options.destination = value();
+            else if (argument == L"--platform") {
+                const auto platform=value().wstring();
+                require(platform==L"windows"||platform==L"steamdeck", "--platform must be windows or steamdeck");
+                options.target=platform==L"steamdeck"?InstallTarget::steamdeck:InstallTarget::windows;
+            }
             else if (argument == L"--cache-data")
                 options.cache_data = value();
             else if (argument == L"--desktop")
@@ -848,7 +888,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             for (const auto &file : package.files())
                 package.get(file.name);
             result = {
-                {"files", package.files().size()}, {"assets", recipe.at("assets").size()}, {"native", true}};
+                { "files", package.files().size() }, {"assets", recipe.at("assets").size()}, {"native", true}, {"platforms",Json::array({"windows","steamdeck"})}};
         } else if (unattended) {
             if (options.iso.empty())
                 options.iso = find_iso();

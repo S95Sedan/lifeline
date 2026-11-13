@@ -1,0 +1,11 @@
+if(LIFELINE_STEAMDECK)
+    # The launcher selects SteamOS's session audio server explicitly.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIFELINE_PULSE REQUIRED libpulse>=0.9.15)
+    set(SDL_PULSEAUDIO ON CACHE BOOL "" FORCE)
+    set(SDL_OPENGL ON CACHE BOOL "" FORCE)
+    set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
+    set(SDL_GPU OFF CACHE BOOL "" FORCE)
+    set(SDL_RENDER_GPU OFF CACHE BOOL "" FORCE)
+    set(SDL_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
+endif()

@@ -2,13 +2,14 @@
   <img src="docs/images/header.svg" alt="Lifeline — Native PC Reconstruction" width="100%">
 </p>
 
-<p align="center">Your voice is Rio's lifeline. Explore, investigate, and survive on Windows.</p>
+<p align="center">Your voice is Rio's lifeline. Explore, investigate, and survive on Windows and Linux/Steam Deck.</p>
 
 <p align="center">
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#build">Build</a> ·
   <a href="#installation">Install</a> ·
+  <a href="#steam-deck">Steam Deck</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#settings">Settings</a> ·
   <a href="#credits">Credits</a>
@@ -16,8 +17,9 @@
 
 An unofficial native PC reconstruction of **Lifeline / Operator's Side**.
 Guide Rio through a space hotel using spoken commands, examine her surroundings,
-and direct her during combat. The Windows version adds configurable controls,
-display options, and audio settings around the original game.
+and direct her during combat. Windows and native Linux/Steam Deck builds share
+the same game systems, configurable controls, graphics options and local speech
+recognition. Steam Deck runs natively with OpenGL; Proton is not required.
 
 This repository contains the source code to build the game and its installer.
 You need your own North American **SLUS_208.48** Lifeline ISO to install and play.
@@ -38,14 +40,15 @@ the Modern visual style. Click an image to see it at full size.
 <img src="docs/images/features.svg" alt="Features" width="100%">
 
 - Voice commands processed locally with the original game's speech models.
-- Direct3D 12 rendering, with a software renderer available.
-- Windowed, borderless, and fullscreen display; 4:3, 16:9, or automatic aspect ratios.
+- Direct3D 12 on Windows, native OpenGL on Linux/Steam Deck, and software rendering.
+- Windowed, borderless, and fullscreen on Windows/desktop Linux; fullscreen-only on Steam Deck with adjustable rendering resolution.
+- 4:3, 16:9, or automatic aspect ratios, including the Deck's 16:10 display.
 - Adjustable render scale, texture filtering, shadows, reflections, and FXAA.
 - Five visual styles, including Original and Modern.
 - Rebindable keyboard, gamepad, and joystick controls with matching on-screen prompts.
 - Playback and microphone selection, a live microphone meter, and separate movie, dialogue, and music volumes.
 - Hold Confirm for five seconds to skip a movie, with an on-screen progress indicator.
-- Native saves stored beside the installed game.
+- Native saves beside the Windows game or in the Linux user's data directory.
 
 <a id="build"></a>
 <img src="docs/images/build.svg" alt="Build from source" width="100%">
@@ -57,12 +60,16 @@ Use **64-bit Windows 10 or 11** with:
 - Windows PowerShell, `curl.exe`, and `certutil.exe`.
 
 1. Clone this repository, or download and extract its source ZIP.
-2. Run **[build-installer.bat](build-installer.bat)** from the repository root.
+2. Run **[build-installer.bat](build-installer.bat)** on Windows from the repository root.
 3. Find the completed installer at **`build/Installer.exe`**.
 
-The batch file fetches verified build dependencies, compiles the native game,
-and embeds it in the installer. The first build requires internet access.
+The batch file fetches verified build dependencies, compiles the Windows and native
+Linux/Steam Deck runtimes, and embeds both in the installer. The first build requires
+internet access; no prebuilt Steam Deck folder or WSL is needed.
 You do not need the game ISO until installation.
+
+For a native Linux build or an explicit prebuilt-runtime override, see the
+[Linux build guide](project/lifeline-linux/README.md).
 
 Run `build-installer.bat --no-pause` from a terminal to omit the final key prompt.
 
@@ -70,13 +77,30 @@ Run `build-installer.bat --no-pause` from a terminal to omit the final key promp
 <img src="docs/images/install.svg" alt="Installation" width="100%">
 
 1. Run your built **`Installer.exe`**.
-2. Select your **SLUS_208.48 Lifeline ISO**.
-3. Choose a writable installation folder and complete the conversion.
-4. Launch **`lifeline.exe`** from that folder.
+2. Choose **Windows installation** or **Steam Deck portable folder**.
+3. Select your **SLUS_208.48 Lifeline ISO**, then choose a writable destination and complete the conversion.
+4. On Windows, launch **`lifeline.exe`**. For Steam Deck, follow the steps below.
 
-Keep the installed `data/` folder beside the executable. Saves and settings live
-in `user/` beside it. The installer converts your disc's resources and movies
-locally; it does not download game content.
+Keep the installed `data/` folder beside the executable. Windows saves and settings
+live in `user/` beside it; Linux uses the user-data location below. The installer
+converts your disc's resources and movies locally; it does not download game content.
+
+## Steam Deck
+
+Copy the **entire portable folder** to your Deck. In Desktop Mode, open a terminal
+in that folder and run:
+
+```sh
+sh ./launch.sh
+```
+
+Add `launch.sh` to Steam as a **Non-Steam Game**, use Steam Input's **Gamepad**
+template and leave forced Steam Play compatibility off. Launch in **Gaming Mode**
+for the Steam overlay. The game runs natively with OpenGL, defaulting to
+**fullscreen, 1280 × 800 and Auto aspect**. Resolution changes adjust the internal
+rendering size while the display stays fullscreen.
+
+Saves, settings and `launch.log` live in `~/.local/share/Lifeline/` by default.
 
 <a id="controls"></a>
 <img src="docs/images/controls.svg" alt="Controls" width="100%">
@@ -118,11 +142,12 @@ Changes save immediately. Each page's **Restore Defaults** affects that page.
 | --- | --- |
 | Audio | Playback device, Stereo/Mono output, and separate FMV, Dialogue, and Music volumes. Volume changes play a short preview. |
 | Controls | Keyboard, gamepad, and joystick bindings. |
-| Display | Windowed, Borderless, or Fullscreen; resolution, VSync, and 4:3, 16:9, or Auto aspect ratio. |
+| Display | Windows/desktop Linux: Windowed, Borderless, or Fullscreen. Deck: fullscreen-only. All builds retain resolution, VSync, and 4:3, 16:9, or Auto aspect ratio. |
 | Graphics | Quality presets, render scale, FXAA, texture quality/filtering, shadow quality, Off/Low/High reflections, and visual style. |
 | Microphone | Recording device, a live Input Level meter, and numeric gain from 0% to 200%. Speak normally to check the level; lower gain if Too Loud appears. |
 
-The default display mode is Borderless with a centered 4:3 view. Original,
+Windows defaults to Borderless with a centered 4:3 view; Steam Deck defaults
+to fullscreen at 1280 × 800 with Auto aspect. Original,
 Faithful, Balanced, Modern, and Enhanced visual styles are available. Gameplay
 stays paused while using Settings; graphics changes are visible behind the panel.
 
@@ -131,8 +156,9 @@ device is disconnected, the game remembers it and temporarily uses the default.
 Changing the microphone or gain cancels the current utterance; release Speak
 before recording another command. The Input Level bar measures incoming sound.
 
-Settings are stored in `user/config.ini` beside `lifeline.exe`; output mode and
-bindings are in `user/menu-settings.txt`. Use the menus to select audio devices.
+Windows settings are stored in `user/config.ini` beside `lifeline.exe`; output
+mode and bindings are in `user/menu-settings.txt`. Linux stores these files in
+its user-data directory described above. Use the menus to select audio devices.
 Close the game before making manual configuration edits.
 
 <a id="credits"></a>

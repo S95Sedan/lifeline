@@ -406,14 +406,20 @@ Json perform_install(const InstallOptions &options, const Report &report) {
         program_state = read_json(root / L"installation.json");
         require(program_state.at("product") == "LifelineNative" && program_state.at("format") == 1,
                 "Unrecognized installation metadata");
+        require(program_state.value("platform", "windows")==target_name(options.target),
+                "This folder belongs to another platform. Choose a separate destination folder.");
     }
+    const auto selected_prefix=options.target==InstallTarget::steamdeck?"program/linux/":"program/windows/";
+    require(std::any_of(package.files().begin(),package.files().end(),[&](const auto& f){return f.name.starts_with(selected_prefix);}),"The selected runtime is missing from this installer");
+    const auto other_executable=options.target==InstallTarget::steamdeck?L"lifeline.exe":L"lifeline";
+    require(!fs::exists(root/other_executable),"This folder contains the other platform's executable. Choose a separate destination folder.");
     std::map<std::string, std::string> owned_programs;
     for (const auto &record : program_state.at("files"))
         owned_programs.emplace(record.at("path"), record.at("sha256").get<std::string>());
     auto check_programs = [&] {
         for (const auto &file : package.files())
-            if (file.name.starts_with("program/")) {
-                auto name = file.name.substr(8);
+            if (const auto selected = program_path(file.name,options.target)) {
+                const auto& name = *selected;
                 auto path = safe_path(root, name);
                 if (fs::exists(path)) {
                     require(fs::is_regular_file(path), "A program filename is already a directory");
@@ -761,15 +767,16 @@ Json perform_install(const InstallOptions &options, const Report &report) {
         Json state = {{"format", 1},
                       {"product", "LifelineNative"},
                       {"version", "0.1.0"},
+                      {"platform", target_name(options.target)},
                       {"source", disc.identity()},
                       {"files", Json::array()}};
         if (fs::exists(root / L"licenses"))
             check_tree(root / L"licenses");
         check_programs();
-        report.update(L"Install the native PC executable", 94);
+        report.update(options.target==InstallTarget::steamdeck?L"Prepare the native Steam Deck runtime":L"Install the native Windows executable",94);
         for (const auto &file : package.files())
-            if (file.name.starts_with("program/")) {
-                auto name = file.name.substr(8);
+            if (const auto selected = program_path(file.name,options.target)) {
+                const auto& name = *selected;
                 report.checkpoint();
                 auto path = safe_path(root, name);
                 if (!fs::is_regular_file(path) || file_sha256(path) != file.sha256)
@@ -792,7 +799,7 @@ Json perform_install(const InstallOptions &options, const Report &report) {
             report.status(L"Finish the verified installation", 97);
         result["warnings"] = Json::array();
         try {
-            auto links = shortcuts(root, options.desktop, options.start_menu);
+            auto links = options.target==InstallTarget::windows?shortcuts(root, options.desktop, options.start_menu):std::vector<std::string>{};
             state["shortcuts"] = links;
         } catch (const std::exception &error) {
             result["warnings"].push_back(
@@ -800,6 +807,7 @@ Json perform_install(const InstallOptions &options, const Report &report) {
         }
         transaction.text(root / L"installation.json", state.dump(2) + "\n");
         result["destination"] = path_text(root);
+        result["platform"] = target_name(options.target);
         result["reused_assets"] = reused_assets;
         result["converted_movies"] = converted_movies;
         finish_phase("publication_seconds");
@@ -813,7 +821,7 @@ Json perform_install(const InstallOptions &options, const Report &report) {
         result["timings"] = timings;
         result["seconds"] = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         if (report.status)
-            report.status(L"Lifeline is installed", 100);
+            report.status(options.target==InstallTarget::steamdeck?L"Portable Steam Deck folder is ready":L"Lifeline is installed", 100);
         return result;
     } catch (...) {
         auto original = std::current_exception();

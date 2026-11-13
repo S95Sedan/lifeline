@@ -53,7 +53,7 @@ Package::Package(Bytes bytes_) : storage(std::move(bytes_)) {
     View data(storage);
     require(fixed_string(data, 0, 8) == "LFSETUP1", "Invalid setup package");
     auto count = u32(data, 8);
-    require(count <= 256, "Too many package files");
+    require(count <= 4096, "Too many package files");
     std::size_t p = 12;
     std::map<std::string, bool> names;
     for (unsigned i = 0; i < count; ++i) {

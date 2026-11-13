@@ -1,0 +1,16 @@
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/rendering/shaders/scene_raster.hlsl")
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/rendering/shaders/scene_raster.hlsl" LIFELINE_SCENE_SHADER)
+    string(LENGTH "${LIFELINE_SCENE_SHADER}" LIFELINE_SHADER_LENGTH)
+    set(LIFELINE_SHADER_OFFSET 0)
+    set(LIFELINE_SHADER_LITERALS "")
+    while(LIFELINE_SHADER_OFFSET LESS LIFELINE_SHADER_LENGTH)
+        string(SUBSTRING "${LIFELINE_SCENE_SHADER}" ${LIFELINE_SHADER_OFFSET} 8192 LIFELINE_SHADER_CHUNK)
+        string(APPEND LIFELINE_SHADER_LITERALS "R\"LIFELINE_HLSL(${LIFELINE_SHADER_CHUNK})LIFELINE_HLSL\"\n")
+        math(EXPR LIFELINE_SHADER_OFFSET "${LIFELINE_SHADER_OFFSET} + 8192")
+    endwhile()
+    configure_file("${LIFELINE_PLATFORM_DIR}/src/rendering/d3d12_shader.hpp.in"
+        "${LIFELINE_GENERATED}/rendering/d3d12_shader.hpp" @ONLY)
+    target_sources(lifeline-flash PRIVATE "${LIFELINE_PLATFORM_DIR}/src/rendering/d3d12_renderer.cpp")
+    target_include_directories(lifeline-flash PRIVATE "${LIFELINE_GENERATED}/rendering")
+    target_link_libraries(lifeline-flash PRIVATE d3d12 dxgi d3dcompiler)

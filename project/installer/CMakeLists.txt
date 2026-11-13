@@ -41,18 +41,36 @@ endif()
 
 # The separate installer build updates and embeds the native game executable.
 # Keep this cache separate from the developer's game build and its output settings.
-set(LIFELINE_GAME_BUILD "${LIFELINE_NATIVE_WORK}/game-cmake")
+set(LIFELINE_GAME_BUILD "${LIFELINE_NATIVE_WORK}/game-windows-cmake")
+set(LIFELINE_WINDOWS_EXECUTABLE "" CACHE FILEPATH "Optional verified prebuilt Windows runtime")
+if(LIFELINE_WINDOWS_EXECUTABLE)
+    add_custom_target(lifeline-game
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${LIFELINE_EMBEDDED_GAME_OUTPUT}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${LIFELINE_WINDOWS_EXECUTABLE}" "${LIFELINE_EMBEDDED_GAME_OUTPUT}/lifeline.exe"
+        DEPENDS "${LIFELINE_WINDOWS_EXECUTABLE}"
+        BYPRODUCTS "${LIFELINE_EMBEDDED_GAME_OUTPUT}/lifeline.exe" VERBATIM)
+else()
+set(LIFELINE_GAME_DEPENDENCY_ARGS)
+if(EXISTS "${LIFELINE_WORKSPACE}/dev/cmake/_deps/sdl3-src/CMakeLists.txt")
+    list(APPEND LIFELINE_GAME_DEPENDENCY_ARGS "-DFETCHCONTENT_SOURCE_DIR_SDL3=${LIFELINE_WORKSPACE}/dev/cmake/_deps/sdl3-src")
+endif()
 add_custom_target(lifeline-game
-    COMMAND "${CMAKE_COMMAND}" -S "${LIFELINE_WORKSPACE}/project/lifeline" -B "${LIFELINE_GAME_BUILD}"
-        -G Ninja -DCMAKE_BUILD_TYPE=Release "-DLIFELINE_OUTPUT=${LIFELINE_EMBEDDED_GAME_OUTPUT}"
+    COMMAND "${CMAKE_COMMAND}" -S "${LIFELINE_WORKSPACE}/project/lifeline-windows" -B "${LIFELINE_GAME_BUILD}"
+        -G Ninja -DCMAKE_BUILD_TYPE=Release ${LIFELINE_GAME_DEPENDENCY_ARGS} "-DLIFELINE_OUTPUT=${LIFELINE_EMBEDDED_GAME_OUTPUT}"
     COMMAND "${CMAKE_COMMAND}" --build "${LIFELINE_GAME_BUILD}" --target lifeline
     BYPRODUCTS "${LIFELINE_EMBEDDED_GAME_OUTPUT}/lifeline.exe" VERBATIM)
 
-add_library(lifeline-setup-common STATIC src/common.cpp src/disc.cpp src/converters.cpp src/package.cpp)
+endif()
+
+add_library(lifeline-setup-common STATIC src/common.cpp src/disc.cpp src/converters.cpp src/package.cpp src/install_target.cpp)
 target_include_directories(lifeline-setup-common PUBLIC include "${LIFELINE_NATIVE_DEPS}")
 target_compile_definitions(lifeline-setup-common PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
 target_compile_options(lifeline-setup-common PRIVATE /W4 /permissive- /utf-8)
 target_link_libraries(lifeline-setup-common PUBLIC bcrypt cabinet shell32 ole32)
+if(EXISTS "${LIFELINE_WORKSPACE}/dev/tests/installer_platform_tests.cpp")
+    add_executable(lifeline-installer-platform-tests EXCLUDE_FROM_ALL "${LIFELINE_WORKSPACE}/dev/tests/installer_platform_tests.cpp")
+    target_link_libraries(lifeline-installer-platform-tests PRIVATE lifeline-setup-common)
+endif()
 add_library(lifeline-setup-movies STATIC src/movie_converter.cpp)
 add_dependencies(lifeline-setup-movies lifeline-movie-dependencies)
 target_link_libraries(lifeline-setup-movies PRIVATE lifeline-setup-common)
@@ -65,16 +83,17 @@ target_compile_options(lifeline-setup-movies PRIVATE /W4 /permissive- /utf-8)
 add_executable(lifeline-package src/make_package.cpp)
 target_link_libraries(lifeline-package PRIVATE lifeline-setup-common)
 set_target_properties(lifeline-package PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${LIFELINE_NATIVE_WORK}/packaging")
+include("${LIFELINE_WORKSPACE}/project/lifeline-linux/cmake/WindowsRuntime.cmake")
 set(LIFELINE_PACKAGE "${LIFELINE_NATIVE_WORK}/packaging/setup.pak")
 add_custom_target(lifeline-setup-payload
     COMMAND "$<TARGET_FILE:lifeline-package>" "${LIFELINE_PACKAGE_INPUT}" "${LIFELINE_EMBEDDED_GAME_OUTPUT}/lifeline.exe"
         "${LIFELINE_FFMPEG_SOURCE}/COPYING.LGPLv2.1"
-        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/third-party-notices.txt" "${LIFELINE_PACKAGE}"
-    DEPENDS lifeline-package lifeline-game lifeline-reference-data lifeline-movie-dependencies
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/third-party-notices.txt" "${LIFELINE_PACKAGE}" "${LIFELINE_LINUX_RUNTIME}"
+    DEPENDS lifeline-package lifeline-game lifeline-linux-runtime lifeline-reference-data lifeline-movie-dependencies
     BYPRODUCTS "${LIFELINE_PACKAGE}" VERBATIM)
-set(LIFELINE_SETUP_ICON "${LIFELINE_GAME_BUILD}/generated/lifeline.ico")
-if(EXISTS "${LIFELINE_WORKSPACE}/project/lifeline/packaging/source.ico")
-    set(LIFELINE_SETUP_ICON "${LIFELINE_WORKSPACE}/project/lifeline/packaging/source.ico")
+set(LIFELINE_SETUP_ICON "${LIFELINE_GAME_BUILD}/shared/generated/lifeline.ico" CACHE FILEPATH "Installer icon")
+if(EXISTS "${LIFELINE_WORKSPACE}/project/shared/packaging/source.ico")
+    set(LIFELINE_SETUP_ICON "${LIFELINE_WORKSPACE}/project/shared/packaging/source.ico")
 endif()
 set(LIFELINE_SETUP_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/setup.manifest")
 configure_file(src/installer.rc.in "${CMAKE_CURRENT_BINARY_DIR}/installer.rc" @ONLY)
